@@ -7,7 +7,7 @@ This project aims to classify 2D MRI brain scans from the ADNI dataset as either
 This is accomplished using a state-of-the-art computer vision model, **ConvNeXt**, through a technique called **transfer learning**. The final model uses the `convnext_small` variant. This model can hit 0.8+ validation acccuracy after 15 to 50 epochs. 
 
 An interesting side-effect of the model architecture is if you feed it an image that isn't a brain mri, it will have high confidence that it is a normal control image. This shows that our model hasn't learned to detect alzheimers by looking for features of a normal brain, but, looks for alzheimers by detecting features only in an alzheimres brain. This model requires .jpeg images that are imaged looking from the side of the brain, not front on or from above. 
-
+ 
 ## 2. Algorithm Description
 
 The core of this project is a `convnext_small` model, which has been pre-trained on the large-scale ImageNet dataset. Instead of training a new model from scratch, which would require a vast amount of data and computational power, we adapt this existing model to our specific task.
