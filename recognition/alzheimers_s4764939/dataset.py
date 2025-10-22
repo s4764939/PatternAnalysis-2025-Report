@@ -1,8 +1,44 @@
 import os
 from PIL import Image
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from torchvision import transforms
+import random
+import numpy as np
+
+IMAGE_SIZE = (240, 240)
+
+class AddRegularization(object):
+    def __init__(self, probability=0.5, noise_factor=0.05, cutout_size=0.4):
+        self.probability = probability
+        self.noise_factor = noise_factor
+        self.cutout_size = cutout_size
+
+    def __call__(self, img):
+        if not isinstance(img, torch.Tensor):
+            raise TypeError("Image must be a torch.Tensor. Apply ToTensor() before this transform.")
+
+        if random.random() > self.probability:
+            return img
+
+        if random.random() < 0.5:
+            # Add Gaussian noise and clip
+            noise = torch.randn_like(img) * self.noise_factor
+            noisy_img = img + noise
+            return torch.clamp(noisy_img, 0., 1.)
+        else:
+            # Apply cutout
+            h, w = img.size(1), img.size(2)
+            cutout_h, cutout_w = int(h * self.cutout_size), int(w * self.cutout_size)
+            
+            corner = random.randint(0, 3)
+            if corner == 0: x1, y1 = 0, 0
+            elif corner == 1: x1, y1 = w - cutout_w, 0
+            elif corner == 2: x1, y1 = 0, h - cutout_h
+            else: x1, y1 = w - cutout_w, h - cutout_h
+            
+            img[:, y1:y1 + cutout_h, x1:x1 + cutout_w] = 0
+            return img
 
 class AlzheimersDataset(Dataset):
     """
@@ -16,16 +52,20 @@ class AlzheimersDataset(Dataset):
         ├── image1.jpeg
         └── ...
     """
-    def __init__(self, root_dir, transform=None):
+    def __init__(self, root_dir, transform=None, is_augmented=False, augmentation_transform=None):
         """
         Args:
             root_dir (string): Directory with all the images.
             transform (callable, optional): Optional transform to be applied on a sample.
+            is_augmented (bool): Flag to determine if augmentation should be applied.
+            augmentation_transform (callable, optional): Augmentation transform.
         """
         self.root_dir = root_dir
         self.transform = transform
         self.samples = []
         self.classes = {'NC': 0, 'AD': 1}
+        self.is_augmented = is_augmented
+        self.augmentation_transform = augmentation_transform
 
         for class_name in self.classes.keys():
             class_dir = os.path.join(self.root_dir, class_name)
@@ -47,10 +87,12 @@ class AlzheimersDataset(Dataset):
 
         img_path, label = self.samples[idx]
         
-        # Load image and convert to RGB
-        image = Image.open(img_path).convert("RGB")
+        # Load image and convert to greyscale
+        image = Image.open(img_path).convert("L")
 
-        if self.transform:
+        if self.is_augmented and self.augmentation_transform:
+            image = self.augmentation_transform(image)
+        elif self.transform:
             image = self.transform(image)
             
         return image, label
@@ -60,9 +102,9 @@ if __name__ == '__main__':
     # Define the transformations for a pre-trained model
     # Using standard ImageNet normalization values
     data_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize(IMAGE_SIZE),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        transforms.Normalize(mean=[0.5], std=[0.5])
     ])
 
     # --- IMPORTANT ---
