@@ -4,7 +4,7 @@
 
 This project aims to classify 2D MRI brain scans from the ADNI dataset as either belonging to a patient with Alzheimer's Disease (AD) or a Normal Control (NC) subject. The goal is to achieve a minimum accuracy of 80% on the test set, as per the project specification.
 
-This is accomplished using a state-of-the-art computer vision model, **ConvNeXt**, through a technique called **transfer learning**. The final model uses the `convnext_small` variant.
+This is accomplished using a state-of-the-art computer vision model, **ConvNeXt**, through a technique called **transfer learning**. The final model uses the `convnext_small` variant. This model can hit 0.8+ validation acccuracy after 15 to 50 epochs. 
 
 ## 2. Algorithm Description
 
@@ -55,13 +55,16 @@ ADNI/AD_NC/
 │   └── NC/
 │       ├── image02.jpeg
 │       └── ...
-└── test/
-    ├── AD/
-    │   ├── image03.jpeg
-    │   └── ...
-    └── NC/
-        ├── image04.jpeg
-        └── ...
+├── test/
+│  ├── AD/
+│   │   ├── image03.jpeg
+│   │   └── ...
+│   └── NC/
+│       ├── image04.jpeg
+│       └── ...
+├─── train.py
+├─── modules.py
+└─── ...
 ```
 The `train` directory is used for training the model, and the `test` directory is used for validation during training to save the best-performing version of the model.
 
