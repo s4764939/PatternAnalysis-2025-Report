@@ -17,7 +17,7 @@ import random
 from dataset import AlzheimersDataset, AddRegularization
 # --- MODIFICATION ---
 # Import the new custom model creator instead of the old one
-from modules import create_custom_convnext_model
+from modules import create_convnext_model as create_custom_convnext_model
 # --- END MODIFICATION ---
 
 def train(args):
@@ -208,8 +208,8 @@ if __name__ == '__main__':
     default_data_dir = os.path.join(base_dir, 'ADNI', 'AD_NC')
 
     parser.add_argument('--data-dir', type=str, default=default_data_dir, help='Path to the root data directory')
-    parser.add_argument('--learning-rate', type=float, default=5e-5, help='Learning rate')
-    parser.add_argument('--weight-decay', type=float, default=2e-2, help='Weight decay')
+    parser.add_argument('--learning-rate', type=float, default=1e-5, help='Learning rate')
+    parser.add_argument('--weight-decay', type=float, default=5e-2, help='Weight decay')
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
     parser.add_argument('--model-save-path', type=str, default='alzheimers_convnext_v3.pth', help='Path to save the model')
