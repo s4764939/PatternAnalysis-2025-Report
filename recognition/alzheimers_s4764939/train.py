@@ -15,7 +15,10 @@ import random
 
 # Import our custom modules
 from dataset import AlzheimersDataset, AddRegularization
-from modules import create_convnext_model
+# --- MODIFICATION ---
+# Import the new custom model creator instead of the old one
+from modules import create_custom_convnext_model
+# --- END MODIFICATION ---
 
 def train(args):
     # 1. SETUP
@@ -81,9 +84,20 @@ def train(args):
 
     # 3. MODEL, LOSS, OPTIMIZER, SCHEDULER
     # ============================================================================
-    model = create_convnext_model(num_classes=1, model_name='convnext_small', in_chans=1).to(device)
-    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    criterion_smooth = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    
+    # --- MODIFICATION ---
+    # Call the new custom model creator.
+    # We now pass no params to get the default (ConvNeXt-S like) arch
+    print("Creating custom ConvNeXt model from scratch...")
+    model = create_custom_convnext_model(
+        num_classes=1, 
+        in_chans=1
+        # We use the default depths/dims which match the old 'convnext_small'
+    ).to(device)
+    # --- END MODIFICATION ---
+
+    criterion = nn.BCEWithLogitsLoss()
+    criterion_smooth = nn.BCEWithLogitsLoss()
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs)
 
@@ -188,7 +202,7 @@ def train(args):
                 print(f"Best F1 score of {best_val_f1:.4f} was achieved at epoch {best_epoch}.")
                 break
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train a ConvNeXt model for Alzheimer\'s classification.')
+    parser = argparse.ArgumentParser(description='Train a *custom* ConvNeXt model for Alzheimer\'s classification.')
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
     default_data_dir = os.path.join(base_dir, 'ADNI', 'AD_NC')
@@ -198,12 +212,13 @@ if __name__ == '__main__':
     parser.add_argument('--weight-decay', type=float, default=2e-2, help='Weight decay')
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
-    parser.add_argument('--model-save-path', type=str, default='alzheimers_convnext_v2.pth', help='Path to save the model')
-    parser.add_argument('--label-smoothing', type=float, default=0.1, help='Label smoothing factor')
+    parser.add_argument('--model-save-path', type=str, default='alzheimers_convnext_v3.pth', help='Path to save the model')
+    parser.add_argument('--label-smoothing', type=float, default=0.2, help='Label smoothing factor')
     parser.add_argument('--threshold', type=float, default=0.5, help='Classification threshold')
-    parser.add_argument('--early-stopping-patience', type=int, default=15, help='Patience for early stopping')
-    parser.add_argument('--noise-factor', type=float, default=0.05, help='Factor for Gaussian noise augmentation')
+    parser.add_argument('--early-stopping-patience', type=int, default=100, help='Patience for early stopping')
+    parser.add_argument('--noise-factor', type=float, default=0.1, help='Factor for Gaussian noise augmentation')
     parser.add_argument('--cutout-size', type=float, default=0.4, help='Size of the cutout augmentation as a fraction of image size')
 
     args = parser.parse_args()
     train(args)
+

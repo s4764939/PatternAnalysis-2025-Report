@@ -4,8 +4,10 @@ from PIL import Image
 from torchvision import transforms
 import torch.nn.functional as F
 
-# Import our custom module
-from modules import create_convnext_model
+# --- MODIFICATION ---
+# Import the new custom model creator instead of the old one
+from modules import create_custom_convnext_model
+# --- END MODIFICATION ---
 
 def predict(args):
     # 1. SETUP
@@ -19,8 +21,16 @@ def predict(args):
 
     # 2. MODEL LOADING
     # ============================================================================
-    # Create a new model instance (important: set pretrained=False)
-    model = create_convnext_model(num_classes=1, pretrained=False, model_name='convnext_small', in_chans=1)
+    
+    # --- MODIFICATION ---
+    # Create a new *custom* model instance
+    # We use the default arch parameters which match the old 'convnext_small'
+    print("Creating custom ConvNeXt model structure...")
+    model = create_custom_convnext_model(
+        num_classes=1, 
+        in_chans=1
+    )
+    # --- END MODIFICATION ---
     
     # Load the saved state dictionary
     try:
@@ -28,6 +38,10 @@ def predict(args):
     except FileNotFoundError:
         print(f"Error: Model file not found at {args.model_path}")
         print("Please make sure you have trained the model and the .pth file is in the correct directory.")
+        return
+    except RuntimeError as e:
+        print(f"Error loading state_dict: {e}")
+        print("This may be because the saved model's architecture does not match the custom model architecture.")
         return
 
     # Move model to the device and set to evaluation mode
@@ -82,3 +96,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     predict(args)
+
