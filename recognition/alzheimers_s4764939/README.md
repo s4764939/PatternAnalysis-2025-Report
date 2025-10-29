@@ -4,6 +4,8 @@
 
 This is accomplished by building a **ConvNeXt** model from scratch. The architecture is inspired by the "A ConvNet for the 2020s" paper and is tailored to the specifics of this classification task. Instead of relying on a pre-trained model, this project implements the ConvNeXt blocks layer-by-layer. The training process also adopts several modern techniques discussed in the paper to maximize performance.
 
+An interesting side-effect of the model architecture is if you feed it an image that isn't a brain mri, it will have high confidence that it is a normal control image. This shows that our model hasn't learned to detect alzheimers by looking for features of a normal brain, but, looks for alzheimers by detecting features only in an alzheimers brain. This model requires .jpeg images that are imaged looking from the side of the brain, not front on or from above. 
+ 
 ## 2. Algorithm Description
 
 The core of this project is a custom implementation of the ConvNeXt architecture, specifically mirroring the configuration of the `ConvNeXt-Small` variant. The model is not pre-trained but is built from the ground up, inspired by the design principles outlined in the "A ConvNet for the 2020s" paper.
