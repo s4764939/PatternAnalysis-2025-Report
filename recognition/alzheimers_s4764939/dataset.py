@@ -9,6 +9,10 @@ import numpy as np
 IMAGE_SIZE = (240, 240)
 
 class AddRegularization(object):
+    """
+    A custom transform to apply either Gaussian noise or cutout regularization
+    to a tensor image with a given probability.
+    """
     def __init__(self, probability=0.5, noise_factor=0.05, cutout_size=0.4):
         self.probability = probability
         self.noise_factor = noise_factor
@@ -22,12 +26,12 @@ class AddRegularization(object):
             return img
 
         if random.random() < 0.5:
-            # Add Gaussian noise and clip
+            # Add Gaussian noise and clip the values to be between 0 and 1.
             noise = torch.randn_like(img) * self.noise_factor
             noisy_img = img + noise
             return torch.clamp(noisy_img, 0., 1.)
         else:
-            # Apply cutout
+            # Apply cutout by blacking out a random corner of the image.
             h, w = img.size(1), img.size(2)
             cutout_h, cutout_w = int(h * self.cutout_size), int(w * self.cutout_size)
             
@@ -42,7 +46,7 @@ class AddRegularization(object):
 
 class AlzheimersDataset(Dataset):
     """
-    Custom Dataset for loading Alzheimer's MRI scans.
+    A custom PyTorch Dataset for loading Alzheimer's MRI scans.
     It expects a directory structure like:
     root_dir/
     ├── AD/
@@ -86,21 +90,18 @@ class AlzheimersDataset(Dataset):
             idx = idx.tolist()
 
         img_path, label = self.samples[idx]
-        
-        # Load image and convert to greyscale
         image = Image.open(img_path).convert("L")
 
         if self.is_augmented and self.augmentation_transform:
             image = self.augmentation_transform(image)
         elif self.transform:
             image = self.transform(image)
-            
+
         return image, label
 
 # This block allows you to test the dataset script directly
 if __name__ == '__main__':
-    # Define the transformations for a pre-trained model
-    # Using standard ImageNet normalization values
+    # Define standard transformations for testing.
     data_transform = transforms.Compose([
         transforms.Resize(IMAGE_SIZE),
         transforms.ToTensor(),
@@ -108,12 +109,12 @@ if __name__ == '__main__':
     ])
 
     # --- IMPORTANT ---
-    # Change this path to your actual test dataset directory
+    # This path should point to your test dataset directory.
     test_data_dir = os.path.join(os.path.dirname(__file__), 'ADNI', 'AD_NC', 'test')
     
     print(f"Attempting to load data from: {test_data_dir}")
 
-    # Create an instance of the dataset
+    # Create an instance of the dataset for testing.
     alz_dataset = AlzheimersDataset(root_dir=test_data_dir, transform=data_transform)
 
     # Check if the dataset was loaded
@@ -123,7 +124,7 @@ if __name__ == '__main__':
         # Create a DataLoader
         dataloader = DataLoader(alz_dataset, batch_size=4, shuffle=True, num_workers=0)
 
-        # Get one batch of training images
+        # Attempt to retrieve one batch to verify functionality.
         try:
             images, labels = next(iter(dataloader))
 

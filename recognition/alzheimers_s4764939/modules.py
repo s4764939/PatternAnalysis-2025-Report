@@ -4,7 +4,7 @@ from torch.nn import functional as F
 from torchvision.ops import StochasticDepth
 
 class LayerNorm2d(nn.LayerNorm):
-    """ 2D-aware Layer Normalization. """
+    """ Layer Normalization for 2D inputs (N, C, H, W). """
     def forward(self, x):
         x = x.permute(0, 2, 3, 1) # (N, C, H, W) -> (N, H, W, C)
         x = F.layer_norm(x, self.normalized_shape, self.weight, self.bias, self.eps)
@@ -13,13 +13,13 @@ class LayerNorm2d(nn.LayerNorm):
 
 class ConvNeXtBlock(nn.Module):
     """
-    ConvNeXt Block: [Conv_dw-7x7, LayerNorm, Linear, GELU, Linear, StochasticDepth]
+    A single block of the ConvNeXt architecture.
     """
     def __init__(self, dim, drop_path=0., layer_scale_init_value=1e-6):
         super().__init__()
-        self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim) # depthwise conv
+        self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim) # Depthwise convolution
         self.norm = LayerNorm2d(dim, eps=1e-6)
-        self.pwconv1 = nn.Linear(dim, 4 * dim) # pointwise/1x1 convs, implemented with linear layers
+        self.pwconv1 = nn.Linear(dim, 4 * dim) # Pointwise/1x1 convs implemented as linear layers
         self.act = nn.GELU()
         self.pwconv2 = nn.Linear(4 * dim, dim)
         self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((dim)), 
@@ -42,13 +42,17 @@ class ConvNeXtBlock(nn.Module):
         return x
 
 class ConvNeXt(nn.Module):
+    """
+    A ConvNeXt model implementation built from scratch, following the original paper's
+    design. This allows for customization of depths, dimensions, and other parameters.
+    """
     def __init__(self, in_chans=1, num_classes=1, 
                  depths=[3, 3, 9, 3], dims=[96, 192, 384, 768], 
                  drop_path_rate=0., layer_scale_init_value=1e-6,
                  head_init_scale=1.):
         super().__init__()
 
-        self.downsample_layers = nn.ModuleList() # stem and 3 intermediate downsampling conv layers
+        # The stem and 3 intermediate downsampling layers
         stem = nn.Sequential(
             nn.Conv2d(in_chans, dims[0], kernel_size=4, stride=4),
             LayerNorm2d(dims[0], eps=1e-6)
@@ -61,7 +65,7 @@ class ConvNeXt(nn.Module):
             )
             self.downsample_layers.append(downsample_layer)
 
-        self.stages = nn.ModuleList() # 4 feature resolution stages, each consisting of multiple blocks
+        # The four main stages of the network, each with multiple ConvNeXt blocks
         dp_rates=[x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))] 
         cur = 0
         for i in range(4):
@@ -72,7 +76,7 @@ class ConvNeXt(nn.Module):
             self.stages.append(stage)
             cur += depths[i]
 
-        self.norm = nn.LayerNorm(dims[-1], eps=1e-6) # final norm layer
+        self.norm = nn.LayerNorm(dims[-1], eps=1e-6) # Final normalization layer
         self.head = nn.Linear(dims[-1], num_classes)
 
         self.apply(self._init_weights)
@@ -88,7 +92,7 @@ class ConvNeXt(nn.Module):
         for i in range(4):
             x = self.downsample_layers[i](x)
             x = self.stages[i](x)
-        return self.norm(x.mean([-2, -1])) # global average pooling, (N, C, H, W) -> (N, C)
+        return self.norm(x.mean([-2, -1])) # Global average pooling and normalization
 
     def forward(self, x):
         x = self.forward_features(x)
@@ -97,7 +101,7 @@ class ConvNeXt(nn.Module):
 
 def create_convnext_model(num_classes=1, in_chans=1, depths=[3, 3, 9, 3], dims=[96, 192, 384, 768], drop_path_rate=0.2):
     """
-    Creates a custom ConvNeXt model from scratch.
+    Helper function to create a custom ConvNeXt model.
 
     Args:
         num_classes (int): Number of output classes.
@@ -110,23 +114,23 @@ def create_convnext_model(num_classes=1, in_chans=1, depths=[3, 3, 9, 3], dims=[
     return model
 
 if __name__ == '__main__':
-    # --- Test Cases ---
+    # --- Model Creation and Forward Pass Test ---
     print("--- Testing Model Creation ---")
     
-    # Test creating the model for the Alzheimer's use case
+    # Create a model with parameters matching the 'small' variant.
     model = create_convnext_model(num_classes=1, in_chans=1, depths=[3, 3, 9, 3], dims=[96, 192, 384, 768], drop_path_rate=0.2)
     
     print("Custom ConvNeXt-Small model created successfully from scratch.")
     print(f"Total parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     
-    # Verify the layers were adapted correctly
+    # Verify the input and output layers are correctly configured.
     print(f"Stem layer: {model.downsample_layers[0][0]}")
     print(f"Classifier layer: {model.head}")
     
     # Test a forward pass
     print("\n--- Testing Forward Pass ---")
     try:
-        # Create a dummy input tensor with the correct dimensions (Batch, Channels, Height, Width)
+        # Create a dummy input tensor to test the forward pass.
         dummy_input = torch.randn(4, 1, 224, 224) 
         output = model(dummy_input)
         print(f"Input shape: {dummy_input.shape}")

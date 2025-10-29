@@ -85,6 +85,10 @@ def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    # This helps PyTorch find the best algorithms for your hardware.
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
+
     # Enhanced data augmentation for MRI
     data_transforms = {
         'train': transforms.Compose([
@@ -123,8 +127,18 @@ def train(args):
     }
 
     dataloaders = {
-        'train': DataLoader(image_datasets['train'], batch_size=args.batch_size, shuffle=True, num_workers=0),
-        'val': DataLoader(image_datasets['val'], batch_size=args.batch_size, shuffle=False, num_workers=0)
+        'train': DataLoader(
+            image_datasets['train'], 
+            batch_size=args.batch_size, 
+            shuffle=True, 
+            num_workers=args.num_workers, # Use multiple processes for data loading
+            pin_memory=True # Speeds up CPU-to-GPU data transfer
+        ),
+        'val': DataLoader(
+            image_datasets['val'], 
+            batch_size=args.batch_size, 
+            shuffle=False, 
+            num_workers=args.num_workers, pin_memory=True)
     }
     
     print(f"Training set size: {len(image_datasets['train'])}")
@@ -147,13 +161,23 @@ def train(args):
         in_chans=1,
         depths=convnext_s_depths, 
         dims=convnext_s_dims, 
-        drop_path_rate=args.drop_path_rate).to(device)
+        drop_path_rate=args.drop_path_rate
+    ).to(device)
+
+    print("Compiling the model... (This may take a moment on the first run)")
+    # If you encounter TritonMissing error on Windows, comment out the line below.
+    # model = torch.compile(model, backend="inductor", mode="reduce-overhead")
+
+
     ema = EMA(model, decay=args.ema_decay)
     ema.register()
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     
     # Use AdamW optimizer
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+
+    # Using the newer torch.amp.GradScaler API to avoid deprecation warnings.
+    scaler = torch.amp.GradScaler()
     
     # Use CosineAnnealingLR scheduler with warmup
     scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
@@ -163,7 +187,7 @@ def train(args):
     best_val_f1 = 0.0
     patience_counter = 0
     best_epoch = 0
-    log_file = 'training_log.csv'
+    log_file = f'training_log_lr{args.learning_rate}_wd{args.weight_decay}_bs{args.batch_size}.csv'
 
     # Open the log file
     with open(log_file, 'w', newline='') as f:
@@ -173,6 +197,13 @@ def train(args):
         for epoch in range(args.epochs):
             print(f'\nEpoch {epoch+1}/{args.epochs}')
             print('-' * 10)
+
+            # --- Warmup Phase ---
+            if epoch < args.warmup_epochs:
+                # Linearly increase the learning rate
+                lr_scale = (epoch + 1) / args.warmup_epochs
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = args.learning_rate * lr_scale
 
             # --- Train Phase ---
             model.train()
@@ -195,12 +226,15 @@ def train(args):
 
                 optimizer.zero_grad()
 
-                with torch.set_grad_enabled(True):
+                with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
                     outputs = model(inputs)
                     loss = mixup_criterion(criterion, outputs, targets_a, targets_b, lam)
-                    loss.backward()
-                    optimizer.step()
-                    ema.update()
+                
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+                
+                ema.update()
 
                 running_loss += loss.item() * inputs.size(0)
 
@@ -220,7 +254,7 @@ def train(args):
                 inputs = inputs.to(device)
                 labels = labels.to(device).float().unsqueeze(1)
 
-                with torch.no_grad():
+                with torch.no_grad(), torch.amp.autocast(device_type='cuda', dtype=torch.float16):
                     outputs = model(inputs)
                     loss = criterion(outputs, labels)
 
@@ -244,6 +278,7 @@ def train(args):
 
             # Log metrics to CSV
             writer.writerow([epoch + 1, train_loss, val_loss, val_accuracy, precision, recall, f1, optimizer.param_groups[0]['lr']])
+            f.flush()
 
             # Early stopping & Model saving
             if f1 > best_val_f1:
@@ -259,8 +294,9 @@ def train(args):
                 patience_counter += 1
                 print(f"Validation F1-score did not improve. Patience: {patience_counter}/{args.patience}")
 
-            # Scheduler step
-            scheduler.step()
+            # Scheduler step (after warmup)
+            if epoch >= args.warmup_epochs:
+                scheduler.step()
             
             if patience_counter >= args.patience:
                 print(f"Early stopping triggered after {epoch + 1} epochs.")
@@ -279,14 +315,16 @@ if __name__ == '__main__':
     parser.add_argument('--data-dir', type=str, default=default_data_dir, help='Path to the root data directory (containing train and test folders)')
     parser.add_argument('--learning-rate', type=float, default=4e-4, help='Learning rate for the optimizer')
     parser.add_argument('--weight-decay', type=float, default=0.05, help='Weight decay for the AdamW optimizer')
-    parser.add_argument('--batch-size', type=int, default=32, help='Batch size for training')
-    parser.add_argument('--epochs', type=int, default=50, help='Number of epochs to train for')
+    parser.add_argument('--batch-size', type=int, default=64, help='Batch size for training')
+    parser.add_argument('--epochs', type=int, default=80, help='Number of epochs to train for')
+    parser.add_argument('--num-workers', type=int, default=8, help='Number of worker processes for data loading')
     parser.add_argument('--model-save-path', type=str, default='alzheimers_convnext_v2.pth', help='Path to save the trained model')
     parser.add_argument('--label-smoothing', type=float, default=0.1, help='Label smoothing factor')
-    parser.add_argument('--patience', type=int, default=15, help='Patience for early stopping')
+    parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
     parser.add_argument('--mixup-alpha', type=float, default=0.8, help='Alpha parameter for Mixup augmentation')
     parser.add_argument('--drop-path-rate', type=float, default=0.2, help='Stochastic depth rate for ConvNeXt-S')
     parser.add_argument('--ema-decay', type=float, default=0.9999, help='Decay rate for Exponential Moving Average')
+    parser.add_argument('--warmup-epochs', type=int, default=3, help='Number of epochs for learning rate warmup')
 
 
     args = parser.parse_args()
