@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 # --- MODIFICATION ---
 # Import the new custom model creator instead of the old one
-from modules import create_custom_convnext_model
+from modules import create_convnext_model as create_custom_convnext_model
 # --- END MODIFICATION ---
 
 def predict(args):
